@@ -1,0 +1,77 @@
+syntax = "proto2";
+
+package zk;
+
+message SparseCoo {
+    repeated uint32 rows = 1;
+    repeated uint32 cols = 2;
+    repeated bool values = 3;
+}
+
+message IO {
+   repeated bytes data = 1;
+}
+
+message Data {
+    required bytes bits = 1;
+    required uint32 len = 2;
+}
+
+message BoolIo {
+    repeated Data data = 1;
+}
+
+message ProverCommit {
+    required bool w = 1;
+    required bytes m =2;
+}
+
+message Commit {
+    repeated ProverCommit commit = 1;
+}
+
+message EvaluateOutput {
+    required Data d = 1;
+    required bytes u = 2;
+    required bytes v = 3;
+    repeated Commit commits = 4;
+}
+
+message BaseCircuit {
+    required string name = 1;
+    required string data = 2;
+}
+
+message Dependency {
+    required int64 id = 1;
+    required uint32 k_start = 2;
+    required uint32 v_start = 3;
+    required uint32 size = 4;
+}
+
+message Dag {
+    required uint32 id = 1;
+    required string name = 2;
+    required bool out = 3;
+    repeated Dependency deps = 4;
+}
+
+message Waterfall {
+    required bytes seed = 1;
+    required Data input = 2;
+    repeated BaseCircuit circuits = 3;
+    repeated Dag dags = 4;
+}
+
+message WaterfallProverOut {
+    required uint32 id = 1;
+    repeated Commit commits = 2;
+}
+
+message WaterfallOutput {
+    repeated Data d = 1;
+    repeated bytes u = 2;
+    repeated bytes v = 3;
+    required bytes sum = 4;
+    repeated WaterfallProverOut out_commits = 5;
+}

@@ -1,0 +1,60 @@
+syntax = "proto2";
+
+import "core.proto";
+
+package garble;
+
+message InputLabels {
+    // Input id
+    required uint32 id = 1;
+    // Wire labels
+    repeated core.Block labels = 2;
+}
+
+message Input {
+    // input labels
+    repeated InputLabels input_labels = 1;
+}
+
+message OutputEncoding {
+    // Output id
+    required uint32 id = 1;
+    // Encoding
+    repeated bool encoding = 2;
+}
+
+// Garbled Circuit
+message GarbledCircuit {
+    // Circuit unique id
+    required string id = 1;
+    // Generator's input labels
+    repeated InputLabels input_labels = 2;
+    // Truth table for garbled AND gates
+    repeated core.Block encrypted_gates = 3;
+    // Output label encodings
+    repeated OutputEncoding encoding = 4;
+}
+
+message Message {
+    oneof msg {
+        GarbledCircuit garbled_circuit = 1;
+    }
+}
+
+message OutputLabels {
+    // Output id
+    required uint32 id = 1;
+    // Wire labels
+    repeated core.Block labels = 2;
+}
+
+message Output {
+    // Generator's output labels
+    repeated OutputLabels output_labels = 1;
+    // Output label encodings
+    repeated OutputEncoding encoding = 2;
+}
+
+message EncryptedGates {
+    repeated core.Block encrypted_gates = 1;
+}
