@@ -18,6 +18,16 @@ export const str2U8Array = (s: string): Uint8Array => {
   return arr
 }
 
+export function uint8ArrayToBigInt(uint8Array: Uint8Array): BigInt {
+  let result = BigInt(0);
+  
+  for (let i = 0; i < uint8Array.length; i++) {
+    result = (result << BigInt(8)) + BigInt(uint8Array[i]);
+  }
+  
+  return result;
+}
+
 export const u8Array2Str = (arr: Uint8Array): string => {
   let s = ''
   for (const a of arr) {

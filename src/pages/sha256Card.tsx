@@ -4,9 +4,10 @@ import { bits2U8Array, bytes2Hex, int2Bits, str2U8Array, u8Array2Bits, u8Array2S
 import { genCircuitText, setCircuitLine } from "../zk-build/circuit"
 import { genProof, genProofInputs, genVerifyInputs, verifyProof } from "../zk-build"
 import init from "../wasm-circuit/wasm_lib"
-import { VOLEitHWaterfallProofSchema } from "../zk-build/proof"
 import { Card, Form, Input, Button, Spin, Divider, Descriptions } from "antd"
 import type { FormProps } from "antd"
+
+import * as CircuitSchema from "../zk-build/schema"
 
 const { TextArea } = Input
 
@@ -121,7 +122,7 @@ export default function SHA256Card() {
 
       const { proof, runTime } = await genProof(proofInputs)
 
-      const { outputs = [] } = borsh.deserialize(VOLEitHWaterfallProofSchema, proof) as any
+      const { outputs = [] } = borsh.deserialize(CircuitSchema.VOLEitHWaterfallProof, proof) as any
 
       console.log("proof", proof)
       console.log("proof runTime", runTime)
@@ -134,7 +135,7 @@ export default function SHA256Card() {
       const result = await verifyProof(verifyInputs, proof)
 
       console.log("verify result", result)
-      const hexBits = outputs[0].map((v: boolean) => (v ? 1 : 0))
+      const hexBits = outputs.values().next().value[0].map((v: any)=> v.w).map((v: boolean) => (v ? 1 : 0))
       console.log("hexBits", hexBits)
       const hexBytes = bits2U8Array(hexBits)
       console.log("hexBytes", hexBytes)

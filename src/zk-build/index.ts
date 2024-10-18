@@ -1,7 +1,7 @@
-import { bits2U8Array } from "../utils"
-import { gen_proof, verify_proof } from "../wasm-circuit/wasm_lib"
+import { voleith_gen_proof, voleith_verify_proof } from "../wasm-circuit/wasm_lib"
 import { CircuitDependency, CircuitLine } from "./types"
-
+import * as borsh from "borsh"
+import * as CircuitSchema from "./schema"
 /**
  * generate circuit inputs
  * @param circuit -> Big-endian
@@ -10,48 +10,45 @@ import { CircuitDependency, CircuitLine } from "./types"
  * @returns
  */
 export const genProofInputs = async (circuitList: CircuitLine[], baseCircuits: any, inputBits: number[]) => {
-  const { zk } = await import("../proto/bundle")
-
   const circuits = Object.entries(baseCircuits).map((item: any[]) => {
-    return zk.BaseCircuit.create({
+    // CircuitSchema.BaseCircuit
+    return {
       name: item[0],
       data: item[1],
-    })
+    }
   })
 
   const dags = circuitList.map((circuitLine: CircuitLine) => {
     const dependencies = circuitLine.dependency.map((dep: CircuitDependency) => {
-      return zk.Dependency.create({
+      // CircuitSchema.Dependency
+      return {
         id: dep.id,
-        kStart: dep.currentStartWire,
-        vStart: dep.dependencyInputWire,
+        k_start: dep.currentStartWire,
+        v_start: dep.dependencyInputWire,
         size: dep.offset,
-      })
+      }
     })
-    return zk.Dag.create({
+    //CircuitSchema.Dag
+    return {
       id: circuitLine.id,
       name: circuitLine.circuitName,
       deps: dependencies,
       out: circuitLine.out,
-    })
+    }
   })
-  const inputLen = inputBits.length
-  const inputData = bits2U8Array(inputBits.reverse())
-
-  const input = zk.Data.create({
-    bits: inputData,
-    len: inputLen,
-  })
-
-  const message = zk.Waterfall.create({
-    seed: new Uint8Array([0]),
-    input,
+  //CircuitSchema.Waterfall
+  const waterfall = {
     circuits,
     dags,
-  })
-  const arrayBuffer = zk.Waterfall.encode(message).finish()
+  }
 
-  return arrayBuffer
+  const waterfallInput = borsh.serialize(CircuitSchema.WaterfallInput, {
+    seed: 0n,
+    waterfall,
+    inputs: inputBits.map((bit) => !!bit),
+  })
+
+  return waterfallInput
 }
 
 /**
@@ -60,51 +57,44 @@ export const genProofInputs = async (circuitList: CircuitLine[], baseCircuits: a
  * @returns
  */
 export const genVerifyInputs = async (circuitList: CircuitLine[], baseCircuits: any) => {
-  const { zk } = await import("../proto/bundle")
-
   const circuits = Object.entries(baseCircuits).map((item: any[]) => {
-    return zk.BaseCircuit.create({
+    // CircuitSchema.BaseCircuit
+    return {
       name: item[0],
       data: item[1],
-    })
+    }
   })
 
   const dags = circuitList.map((circuitLine: CircuitLine) => {
     const dependencies = circuitLine.dependency.map((dep: CircuitDependency) => {
-      return zk.Dependency.create({
+      // CircuitSchema.Dependency
+      return {
         id: dep.id,
-        kStart: dep.currentStartWire,
-        vStart: dep.dependencyInputWire,
+        k_start: dep.currentStartWire,
+        v_start: dep.dependencyInputWire,
         size: dep.offset,
-      })
+      }
     })
-    return zk.Dag.create({
+    //CircuitSchema.Dag
+    return {
       id: circuitLine.id,
       name: circuitLine.circuitName,
       deps: dependencies,
       out: circuitLine.out,
-    })
+    }
   })
-
-  const input = zk.Data.create({
-    bits: new Uint8Array([0]),
-    len: 0,
-  })
-
-  const message = zk.Waterfall.create({
-    seed: new Uint8Array([0]),
-    input,
+  
+  const waterfall = borsh.serialize(CircuitSchema.Waterfall, {
     circuits,
     dags,
   })
-  const arrayBuffer = zk.Waterfall.encode(message).finish()
 
-  return arrayBuffer
+  return waterfall
 }
 
 export const genProof = async (data: Uint8Array) => {
   const startTime = performance.now()
-  const result = await gen_proof(data)
+  const result = await voleith_gen_proof(data)
   const endTime = performance.now()
   const runTime = endTime - startTime
   console.log(`vole in the head evaluate:  ${runTime}ms`)
@@ -115,11 +105,11 @@ export const genProof = async (data: Uint8Array) => {
 
 export const verifyProof = async (data: Uint8Array, proof: Uint8Array) => {
   const startTime = performance.now()
-  const verify_result = await verify_proof(data, proof)
+  const verify_result = await voleith_verify_proof(data, proof)
   const endTime = performance.now()
   const runTime = endTime - startTime
   console.log(`vole in the head verify:  ${runTime}ms`)
   console.log("verify result", verify_result)
 
-  return { verify_result, runTime: `${runTime}ms`  }
+  return { verify_result, runTime: `${runTime}ms` }
 }

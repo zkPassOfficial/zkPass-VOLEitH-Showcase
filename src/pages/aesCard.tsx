@@ -4,7 +4,7 @@ import { concatArray, gcmEncrypt, getRandomBytes, int2U8Array, str2U8Array, u8Ar
 import { genAndCircuit, genCircuitByInputSizeAndCompareFlag, genXORCircuit, setCircuitLine } from "../zk-build/circuit"
 import { genProof, genProofInputs, genVerifyInputs, verifyProof } from "../zk-build"
 import init from "../wasm-circuit/wasm_lib"
-import { VOLEitHWaterfallProofSchema } from "../zk-build/proof"
+import * as CircuitSchema from "../zk-build/schema"
 import { Card, Form, Input, Button, Spin, Divider, Descriptions } from "antd"
 import type { FormProps } from "antd"
 
@@ -195,7 +195,7 @@ export default function AesCard() {
 
       const { proof, runTime } = await genProof(proofInputs)
 
-      const { outputs = [] } = borsh.deserialize(VOLEitHWaterfallProofSchema, proof) as any
+      const { outputs = [] } = borsh.deserialize(CircuitSchema.VOLEitHWaterfallProof, proof) as any
 
       console.log("proof", proof)
       console.log("proof runTime", runTime)
@@ -213,7 +213,7 @@ export default function AesCard() {
         aesBlockCount: loopCount,
         runTime,
         proofSize: proof.length,
-        circuitOutput: outputs[0].join(", "),
+        circuitOutput: outputs.values().next().value[0].map((v: any)=> v.w).join(', '),
         verifyResult: result.verify_result ? "Pass" : "Fail",
         verifyRunTime: result.runTime,
       })
