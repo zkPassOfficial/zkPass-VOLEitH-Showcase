@@ -125,13 +125,12 @@ export const VOLEitHWaterfallProof = {
   struct: {
     k: 'u64',
     fiat_shamir_r: 'u128',
+    // one-tree BAVC: Δ rejection-sampling counter
+    open_counter: 'u32',
+    // one-tree BAVC: variable-length sibling seeds (was Vec<Vec<u128>>)
     choose_keys: {
       array: {
-        type: {
-          array: {
-            type: 'u128',
-          },
-        },
+        type: 'u128',
       },
     },
     choose_commits: {
