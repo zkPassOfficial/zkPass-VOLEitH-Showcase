@@ -1,150 +1,40 @@
-export const bits2U8Array = (bits: number[]): Uint8Array => {
-  const ba = new Uint8Array(bits.length / 8)
-  for (let i = 0; i < ba.length; i++) {
-    let sum = 0
-    for (let j = 0; j < 8; j++) {
-      sum += bits[i * 8 + j] * 2 ** j
-    }
-    ba[ba.length - 1 - i] = sum
-  }
-  return ba
-}
+// Bytes and wires. A value's wire `i` is bit `i` of the value as a big-endian integer, so the
+// last byte sits on the lowest wires (the prover library's convention).
 
-export const str2U8Array = (s: string): Uint8Array => {
-  const arr = new Uint8Array(s.length)
-  for (let i = 0; i < s.length; i++) {
-    arr[i] = s.charCodeAt(i)
-  }
-  return arr
-}
-
-export function uint8ArrayToBigInt(uint8Array: Uint8Array): BigInt {
-  let result = BigInt(0);
-  
-  for (let i = 0; i < uint8Array.length; i++) {
-    result = (result << BigInt(8)) + BigInt(uint8Array[i]);
-  }
-  
-  return result;
-}
-
-export const u8Array2Str = (arr: Uint8Array): string => {
-  let s = ''
-  for (const a of arr) {
-    s += String.fromCharCode(a)
-  }
-  return s
-}
-
-export function bytes2Hex(bytes: Uint8Array) {
-  return Array.from(bytes, (byte) => {
-    return ('0' + (byte & 0xff).toString(16)).slice(-2)
-  }).join('')
-}
-
-
-export const u8Array2Bits = (n: Uint8Array) => {
-  const bits: Array<number> = Array(n.length * 8) // little endian
-  let index = 0
-  for (let i = n.length - 1; i >= 0; i--) {
-    for (let j = 0; j < 8; j++) {
-      bits[index] = (n[i] >> j) & 0x01
-      index++
-    }
+/** The wires of `bytes`: lowest wire first. */
+export function wires(bytes: Uint8Array): boolean[] {
+  const bits: boolean[] = []
+  for (let i = bytes.length - 1; i >= 0; i--) {
+    for (let bit = 0; bit < 8; bit++) bits.push(((bytes[i] >> bit) & 1) === 1)
   }
   return bits
 }
 
-
-export const int2Bits = (i: number): any =>
-  i
-    .toString(2)
-    .split('')
-    .map((i) => +i)
-
-
-export const concatArray = (...args: Uint8Array[]): Uint8Array => {
-  let arr: any[] = []
-  for (const a of args) {
-    arr = arr.concat(Array.from(a))
+/** The bytes whose wires are `bits`: the inverse of `wires`. */
+export function bytesFromWires(bits: boolean[]): Uint8Array {
+  const bytes = new Uint8Array(bits.length / 8)
+  for (let i = 0; i < bytes.length; i++) {
+    let byte = 0
+    for (let bit = 0; bit < 8; bit++) if (bits[8 * i + bit]) byte |= 1 << bit
+    bytes[bytes.length - 1 - i] = byte
   }
-  return new Uint8Array(arr)
+  return bytes
 }
 
-export const int2U8Array = (i: number | bigint, size?: number): Uint8Array => {
-  let str = i.toString(16)
+export const utf8 = (text: string): Uint8Array => new TextEncoder().encode(text)
 
-  if (str.length % 2 === 1) {
-    str = `0${str}`
+export const hex = (bytes: Uint8Array): string => Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")
+
+export const fromHex = (text: string): Uint8Array => new Uint8Array((text.match(/../g) ?? []).map((pair) => parseInt(pair, 16)))
+
+export function concat(...parts: Uint8Array[]): Uint8Array {
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0))
+  let at = 0
+  for (const part of parts) {
+    out.set(part, at)
+    at += part.length
   }
-
-  const arr = []
-  for (let i = 0; i < str.length / 2; i++) {
-    arr.push(parseInt(str.slice(2 * i, 2 * i + 2), 16))
-  }
-
-  const len = arr.length
-
-  if (size && len < size) {
-    return concatArray(new Uint8Array(size - len).fill(0), new Uint8Array(arr))
-  } else if (size && len > size) {
-    return new Uint8Array(arr.splice(0, size))
-  }
-  return new Uint8Array(arr)
+  return out
 }
 
-export function getRandomBytes(byteLength: number) {
-  const array = new Uint8Array(byteLength)
-  return crypto.getRandomValues(array)
-}
-
-export async function gcmEncrypt(iv: any, key: any, data: any) {
-
-  const explicit_nonce = getRandomBytes(8)
-  const gcm_nonce = new Uint8Array([...iv, ...explicit_nonce])
-
-  const enc_key = await crypto.subtle.importKey(
-    'raw',
-    key,
-    'AES-GCM',
-    false,
-    ['encrypt', 'decrypt']
-  )
-
-  const res = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv: gcm_nonce},
-    enc_key,
-    data
-  )
-
-  const res_bytes = new Uint8Array(res)
-  return {
-    cipher: new Uint8Array([ ...explicit_nonce, ...res_bytes ]),
-    nonce: gcm_nonce
-  }
-}
-
-export async function gcmDecrypt(iv: any, key: any, data: any) {
-  const explicit_nonce = data.slice(0, 8)
-  const rest = data.slice(8)
-  const gcm_nonce = new Uint8Array([ ...iv, ...explicit_nonce ])
-
-  const dec_key = await crypto.subtle.importKey(
-    'raw',
-    key,
-    'AES-GCM',
-    false,
-    [ 'encrypt', 'decrypt' ])
-
-  //if decrypt failed with throw exception
-  const plain_text = await crypto.subtle.decrypt(
-    {
-      name: 'AES-GCM',
-      iv: gcm_nonce      
-    },
-    dec_key,
-    rest
-  )
-
-  return new Uint8Array(plain_text)
-}
+export const randomBytes = (length: number): Uint8Array => crypto.getRandomValues(new Uint8Array(length))

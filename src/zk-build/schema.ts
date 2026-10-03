@@ -1,206 +1,34 @@
-export const Dependency = {
-  struct: {
-    id: 'i64',
-    k_start: 'u64',
-    v_start: 'u64',
-    size: 'u64',
-  },
+// The Borsh layouts the prover library reads and writes, field for field as
+// `zkpass_circuit::spec` and `zkpass_voleith_wasm` declare them. Borsh is positional: the field
+// names here are documentation, the order is the contract.
+
+const Dependency = {
+  struct: { source: "i64", input_start: "u64", source_start: "u64", size: "u64" },
 }
 
-export const Dag = {
-  struct: {
-    id: 'u64',
-    name: 'string',
-    out: 'bool',
-    deps: {
-      array: {
-        type: Dependency,
-      },
-    },
-  },
+const Node = {
+  struct: { id: "u64", name: "string", out: "bool", deps: { array: { type: Dependency } } },
 }
 
-export const BaseCircuit = {
-  struct: {
-    name: 'string',
-    data: 'string',
-  },
-}
+const Circuit = { struct: { name: "string", bristol: "string" } }
 
+/** A statement: what `voleithVerifyProofOutputs` takes. */
 export const Waterfall = {
-  struct: {
-    circuits: {
-      array: {
-        type: BaseCircuit,
-      },
-    },
-    dags: {
-      array: {
-        type: Dag,
-      },
-    },
-  },
+  struct: { circuits: { array: { type: Circuit } }, nodes: { array: { type: Node } } },
 }
 
+/** What `voleithGenProof` takes: the chunk size k (4 or 8), the witness, the statement. */
 export const WaterfallInput = {
-  struct: {
-    seed: 'u128',
-    inputs: {
-      array: {
-        type: 'bool',
-      },
-    },
-    waterfall: Waterfall,
-  },
+  struct: { k: "u8", inputs: { array: { type: "bool" } }, waterfall: Waterfall },
 }
 
-export const ProverCommit = {
-  struct: {
-    w: 'bool',
-    m: 'u128',
-  },
+/** One output node's verified bits, one vector per output group; what
+ *  `voleithVerifyProofOutputs` returns, as `Vec<NodeOutput>` in node-id order. */
+const NodeOutput = {
+  struct: { id: "u64", groups: { array: { type: { array: { type: "bool" } } } } },
 }
+export const NodeOutputs = { array: { type: NodeOutput } }
 
-export const WaterfallOutput = {
-  struct: {
-    d: {
-      array: {
-        type: {
-          array: {
-            type: 'bool',
-          },
-        },
-      },
-    },
-    u: {
-      array: {
-        type: 'u128',
-      },
-    },
-    v: {
-      array: {
-        type: 'u128',
-      },
-    },
-    sum: 'u128',
-    out_commits: {
-      map: {
-        key: 'u64',
-        value: {
-          array: {
-            type: {
-              array: {
-                type: ProverCommit,
-              },
-            },
-          },
-        },
-      },
-    },
-  },
-}
-
-export const EvaluateOutput = {
-  struct: {
-    d: {
-      array: {
-        type: 'bool',
-      },
-    },
-    u: 'u128',
-    v: 'u128',
-    commits: {
-      array: {
-        type: {
-          array: {
-            type: ProverCommit,
-          },
-        },
-      },
-    },
-  },
-}
-
-export const VOLEitHWaterfallProof = {
-  struct: {
-    k: 'u64',
-    fiat_shamir_r: 'u128',
-    choose_keys: {
-      array: {
-        type: {
-          array: {
-            type: 'u128',
-          },
-        },
-      },
-    },
-    choose_commits: {
-      array: {
-        type: {
-          array: {
-            type: 'u128',
-            len: 2,
-          },
-        },
-      },
-    },
-    hash: {
-      array: {
-        type: 'u128',
-        len: 2,
-      },
-    },
-    corrections: {
-      array: {
-        type: {
-          array: {
-            type: 'u128',
-          },
-        },
-      },
-    },
-    hash_u: {
-      array: {
-        type: 'u128',
-      },
-    },
-    hash_v: {
-      array: {
-        type: 'u128',
-      },
-    },
-    d: {
-      array: {
-        type: {
-          array: {
-            type: 'bool',
-          },
-        },
-      },
-    },
-    u: {
-      array: {
-        type: 'u128',
-      },
-    },
-    v: {
-      array: {
-        type: 'u128',
-      },
-    },
-    outputs: {
-      map: {
-        key: 'u64',
-        value: {
-          array: {
-            type: {
-              array: {
-                type: ProverCommit,
-              },
-            },
-          },
-        },
-      },
-    },
-  },
-}
+/** One section of a proof's byte layout; what `voleithProofSections` returns as a vector. */
+const ProofSection = { struct: { name: "string", bytes: "u64" } }
+export const ProofSections = { array: { type: ProofSection } }

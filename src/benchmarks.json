@@ -1,0 +1,13 @@
+{
+  "machine": "Apple M-series, 10 cores",
+  "browser": "Chrome 154",
+  "date": "2026-10-03",
+  "infraCommit": "0a3d200",
+  "method": "median of 7 runs on the page, k = 8, the cards' default inputs",
+  "rows": {
+    "compare": { "k": 8, "proveMs": 16, "verifyMs": 16, "bytes": 5321 },
+    "aes": { "k": 8, "proveMs": 25, "verifyMs": 23, "bytes": 8644 },
+    "fingerprint": { "k": 8, "proveMs": 35, "verifyMs": 30, "bytes": 16065 },
+    "webproof": { "k": 8, "proveMs": 79, "verifyMs": 68, "bytes": 34276 }
+  }
+}
