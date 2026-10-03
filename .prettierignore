@@ -1,0 +1,5 @@
+node_modules
+.next
+public/fixtures
+src/wasm-circuit
+yarn.lock

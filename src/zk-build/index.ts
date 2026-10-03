@@ -1,115 +1,92 @@
-import { voleith_gen_proof, voleith_verify_proof } from "../wasm-circuit/wasm_lib"
-import { CircuitDependency, CircuitLine } from "./types"
+// The prover library behind every card: statements in, proof bytes out, verified outputs back.
+// Everything crosses the wasm boundary as Borsh bytes (`schema.ts`); the outputs of a proof can
+// only be read by verifying it.
 import * as borsh from "borsh"
-import * as CircuitSchema from "./schema"
-/**
- * generate circuit inputs
- * @param circuit -> Big-endian
- * @param inputBits
- * @param seed
- * @returns
- */
-export const genProofInputs = async (circuitList: CircuitLine[], baseCircuits: any, inputBits: number[]) => {
-  const circuits = Object.entries(baseCircuits).map((item: any[]) => {
-    // CircuitSchema.BaseCircuit
-    return {
-      name: item[0],
-      data: item[1],
-    }
-  })
+import init, { voleithGenProof, voleithProofSections, voleithVerifyProofOutputs } from "../wasm-circuit/wasm_lib"
+import * as schema from "./schema"
+import { Statement } from "./types"
 
-  const dags = circuitList.map((circuitLine: CircuitLine) => {
-    const dependencies = circuitLine.dependency.map((dep: CircuitDependency) => {
-      // CircuitSchema.Dependency
-      return {
-        id: dep.id,
-        k_start: dep.currentStartWire,
-        v_start: dep.dependencyInputWire,
-        size: dep.offset,
-      }
-    })
-    //CircuitSchema.Dag
-    return {
-      id: circuitLine.id,
-      name: circuitLine.circuitName,
-      deps: dependencies,
-      out: circuitLine.out,
-    }
-  })
-  //CircuitSchema.Waterfall
-  const waterfall = {
-    circuits,
-    dags,
+export interface NodeOutput {
+  id: bigint
+  groups: boolean[][]
+}
+
+export interface ProofSection {
+  name: string
+  bytes: number
+}
+
+/** Load the wasm module; idempotent, so every entry point may call it. */
+export const ready = () => init()
+
+/** The statement as the verifier takes it: Borsh `Waterfall`. */
+export function statementBytes(statement: Statement): Uint8Array {
+  return borsh.serialize(schema.Waterfall, waterfall(statement))
+}
+
+/** A statement back from its Borsh bytes: the inverse of `statementBytes`. */
+export function statementFromBytes(bytes: Uint8Array): Statement {
+  const wf = borsh.deserialize(schema.Waterfall, bytes) as {
+    circuits: { name: string; bristol: string }[]
+    nodes: { id: bigint; name: string; out: boolean; deps: { source: bigint; input_start: bigint; source_start: bigint; size: bigint }[] }[]
   }
-
-  const waterfallInput = borsh.serialize(CircuitSchema.WaterfallInput, {
-    seed: 0n,
-    waterfall,
-    inputs: inputBits.map((bit) => !!bit),
-  })
-
-  return waterfallInput
+  return {
+    circuits: Object.fromEntries(wf.circuits.map((c) => [c.name, c.bristol])),
+    nodes: wf.nodes.map((node) => ({
+      id: Number(node.id),
+      name: node.name,
+      out: node.out,
+      deps: node.deps.map((dep) => ({
+        source: Number(dep.source),
+        inputStart: Number(dep.input_start),
+        sourceStart: Number(dep.source_start),
+        size: Number(dep.size),
+      })),
+    })),
+  }
 }
 
-/**
- * generate circuit inputs
- * @param circuit -> Big-endian
- * @returns
- */
-export const genVerifyInputs = async (circuitList: CircuitLine[], baseCircuits: any) => {
-  const circuits = Object.entries(baseCircuits).map((item: any[]) => {
-    // CircuitSchema.BaseCircuit
-    return {
-      name: item[0],
-      data: item[1],
-    }
-  })
-
-  const dags = circuitList.map((circuitLine: CircuitLine) => {
-    const dependencies = circuitLine.dependency.map((dep: CircuitDependency) => {
-      // CircuitSchema.Dependency
-      return {
-        id: dep.id,
-        k_start: dep.currentStartWire,
-        v_start: dep.dependencyInputWire,
-        size: dep.offset,
-      }
-    })
-    //CircuitSchema.Dag
-    return {
-      id: circuitLine.id,
-      name: circuitLine.circuitName,
-      deps: dependencies,
-      out: circuitLine.out,
-    }
-  })
-  
-  const waterfall = borsh.serialize(CircuitSchema.Waterfall, {
-    circuits,
-    dags,
-  })
-
-  return waterfall
+/** The prover's input: the statement, the witness and the chunk size, as Borsh `WaterfallInput`. */
+export function proofInput(statement: Statement, witness: boolean[], k: 4 | 8): Uint8Array {
+  return borsh.serialize(schema.WaterfallInput, { k, inputs: witness, waterfall: waterfall(statement) })
 }
 
-export const genProof = async (data: Uint8Array) => {
-  const startTime = performance.now()
-  const result = await voleith_gen_proof(data)
-  const endTime = performance.now()
-  const runTime = endTime - startTime
-  console.log(`vole in the head evaluate:  ${runTime}ms`)
-  console.log("evaluate result", result)
-
-  return { proof: result, runTime: `${runTime}ms` }
+/** Prove; `ms` is the wall-clock time of the wasm call. */
+export function prove(input: Uint8Array): { proof: Uint8Array; ms: number } {
+  const start = performance.now()
+  const proof: Uint8Array = voleithGenProof(input)
+  return { proof, ms: performance.now() - start }
 }
 
-export const verifyProof = async (data: Uint8Array, proof: Uint8Array) => {
-  const startTime = performance.now()
-  const verify_result = await voleith_verify_proof(data, proof)
-  const endTime = performance.now()
-  const runTime = endTime - startTime
-  console.log(`vole in the head verify:  ${runTime}ms`)
-  console.log("verify result", verify_result)
+/** Verify `proof` against `statement` and return the outputs it commits to, in node-id order.
+ *  Throws with the library's message when the proof is malformed or rejected. */
+export function verify(statement: Uint8Array, proof: Uint8Array): { outputs: NodeOutput[]; ms: number } {
+  const start = performance.now()
+  const bytes: Uint8Array = voleithVerifyProofOutputs(statement, proof)
+  const outputs = borsh.deserialize(schema.NodeOutputs, bytes) as NodeOutput[]
+  return { outputs, ms: performance.now() - start }
+}
 
-  return { verify_result, runTime: `${runTime}ms` }
+/** The byte layout of `proof`, section by section; the sizes sum to its length. */
+export function proofSections(proof: Uint8Array): ProofSection[] {
+  const bytes: Uint8Array = voleithProofSections(proof)
+  const sections = borsh.deserialize(schema.ProofSections, bytes) as { name: string; bytes: bigint }[]
+  return sections.map((section) => ({ name: section.name, bytes: Number(section.bytes) }))
+}
+
+function waterfall(statement: Statement) {
+  return {
+    circuits: Object.entries(statement.circuits).map(([name, bristol]) => ({ name, bristol })),
+    nodes: statement.nodes.map((node) => ({
+      id: node.id,
+      name: node.name,
+      out: node.out,
+      deps: node.deps.map((dep) => ({
+        source: dep.source,
+        input_start: dep.inputStart,
+        source_start: dep.sourceStart,
+        size: dep.size,
+      })),
+    })),
+  }
 }

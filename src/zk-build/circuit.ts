@@ -1,203 +1,152 @@
-import { u8Array2Bits } from "../utils"
+// Bristol circuit text for the boolean nodes of a statement, and the wiring of the AES one-way
+// function. Every generator follows the extension's gate order, so a statement built here is the
+// one the verifier expects.
+import { wires } from "../utils"
+import { Dependency, WITNESS } from "./types"
 
-enum CompareFlag {
-  GT = "greater than",
-  GTE = "greater than and equal",
-  LT = "less than",
-  LTE = "less than and equal",
-  EQ = "equal",
-  NEQ = "not equal",
-  IN = "exit in list",
-  CONTAIN = "include some string slice",
+export type Relation = ">" | ">=" | "<" | "<=" | "=" | "!="
+
+/** A circuit with one input group and one output group: the Bristol header and its gates. */
+function circuit(gates: string[], wires: number, inputs: number, outputs: number): string {
+  return `${gates.length} ${wires}\n1 ${inputs}\n1 ${outputs}\n${gates.join("\n")}`
 }
 
-const addAndCircuit = (inputSize: number) => {
-  const gateLineArray: string[] = []
-  const outputWires = []
-  for (let i = 0; i < inputSize; i++) {
-    outputWires.push(i)
-  }
-  let outputStartWire = outputWires.length
-  while (outputWires.length > 1) {
-    const wires = outputWires.splice(0, 2)
-    gateLineArray.push(`2 1 ${wires[0]} ${wires[1]} ${outputStartWire} AND`)
-    outputWires.splice(1, 0, outputStartWire)
-    outputStartWire += 1
-  }
-
-  const outputSize = 1  
-
-  const circuit = `${gateLineArray.length} ${outputStartWire}\n1 ${inputSize}\n1 ${outputSize}\n`
-
-  return `${circuit}${gateLineArray.join("\n")}`
-}
-
-export const genCircuitText = (data: Uint8Array) => {
-  const bits = u8Array2Bits(data)
-  const inputSize = bits.length
-  const gateLineArray: string[] = []
-
-  for (let i = 0; i < bits.length; i++) {
-    if (bits[i]) {
-      gateLineArray.push(`1 1 1 ${i + 3} INV`)
-    } else {
-      gateLineArray.push(`1 1 2 ${i + 3} INV`)
-    }
-  }
-
-  const circuit = `${gateLineArray.length + 2} ${inputSize + 3}\n1 1\n1 ${inputSize}\n2 1 0 0 1 XOR\n1 1 1 2 INV\n`
-
-  return `${circuit}${gateLineArray.join("\n")}`
-}
-
-export const genAndCircuit = (compareCircuitIds: any[], circuitLineArray: any[]) => {
-  const circuitLine: any[] = []
-  const andCircuit = addAndCircuit(compareCircuitIds.length)
-  circuitLine.push(circuitLineArray.length) //set circuit line id
-  circuitLine.push("andCircuit")
-  compareCircuitIds.forEach((lineId: number, index: number) => {
-    circuitLine.push({
-      id: lineId,
-      currentStartWire: index,
-      dependencyInputWire: 0,
-      offset: 1,
-    })
-  })
-  const circuitList = setCircuitLine(circuitLine, circuitLineArray, true)
-  return { circuitList, andCircuit }
-}
-
-export const setCircuitLine = (circuitLine: any[], circuitList: any[], out = false) => {
-  circuitList.push({
-    id: circuitLine.splice(0, 1)[0],
-    out: out,
-    circuitName: circuitLine.splice(0, 1)[0],
-    dependency: circuitLine.splice(0),
-  })
-  return circuitList
-}
-
-export const genXORCircuit = (inputSize: number) => {
+/** `a <relation> b` for two `bits`-wide inputs, one output bit. Equality is a tree of ANDs over
+ *  the negated XORs; an order is a carry chain, `a > b = (a ⊕ c)(b ⊕ c) ⊕ a` per bit. */
+export function compareCircuit(bits: number, relation: Relation): string {
+  if (relation === "=" || relation === "!=") return equalCircuit(bits, relation === "!=")
   const gates: string[] = []
-  const outputWires = []
-  let outputWire = inputSize * 2
-  for (let i = 0; i < inputSize; i++) {
-    gates.push(`2 1 ${i} ${i + inputSize} ${outputWire} XOR`)
-    outputWires.push(outputWire)
-    outputWire += 1
+  let wire = 2 * bits
+  gates.push(`2 1 0 0 ${wire} XOR`) // the carry starts at 0
+  const greater = relation === ">" || relation === "<="
+  for (let i = 0; i < bits; i++) {
+    gates.push(
+      `2 1 ${i} ${wire} ${wire + 1} XOR`,
+      `2 1 ${i + bits} ${wire} ${wire + 2} XOR`,
+      `2 1 ${wire + 1} ${wire + 2} ${wire + 3} AND`,
+      `2 1 ${greater ? i : i + bits} ${wire + 3} ${wire + 4} XOR`,
+    )
+    wire += 4
   }
-
-  const totalGate = gates.length
-  const totalWires = outputWire
-  const inputLine = `1 ${inputSize * 2}`
-  const outputLine = `1 ${inputSize}`
-  return `${totalGate} ${totalWires}\n${inputLine}\n${outputLine}\n${gates.join("\n")}`
+  if (relation === "<=" || relation === ">=") {
+    gates.push(`1 1 ${wire} ${wire + 1} INV`)
+    wire += 1
+  }
+  return circuit(gates, wire + 1, 2 * bits, 1)
 }
 
-export const genCircuitByInputSizeAndCompareFlag = (inputSize: number, flag: string) => {
-  let circuitType = CompareFlag.GT
-
-  switch (flag) {
-    case ">":
-      circuitType = CompareFlag.GT
-      break
-    case "<=":
-      circuitType = CompareFlag.LTE
-      break
-    case "<":
-      circuitType = CompareFlag.LT
-      break
-    case ">=":
-      circuitType = CompareFlag.GTE
-      break
-    case "!=":
-      circuitType = CompareFlag.NEQ
-      break
-    case "contain":
-      circuitType = CompareFlag.EQ
-      break
-    case "in":
-      circuitType = CompareFlag.EQ
-      break
-    default:
-      circuitType = CompareFlag.EQ
-  }
-
-  return genCompareCircuit(inputSize, circuitType)
-}
-
-const genCompareCircuit = (inputSize: number, type = CompareFlag.GT) => {
-  if (!inputSize) return ""
-
-  if (type === CompareFlag.EQ || type === CompareFlag.NEQ) {
-    return genEqualCircuit(inputSize, type)
-  }
-
-  const gates: Array<string> = []
-  let outputWire = inputSize * 2
-  gates.push(`2 1 0 0 ${outputWire} XOR`) // set initial c wire value => 0
-  const isGreaterThan = type === CompareFlag.GT || type === CompareFlag.LTE
-  /**
-   * A B input wire
-   * C carry wire
-   * A > B => (A+C)(B+C) + A
-   * A < B => (A+C)(B+C) + B
-   */
-  for (let i = 0; i < inputSize; i++) {
-    const gate1 = `2 1 ${i} ${outputWire} ${outputWire + 1} XOR`
-    const gate2 = `2 1 ${i + inputSize} ${outputWire} ${outputWire + 2} XOR`
-    const gate3 = `2 1 ${outputWire + 1} ${outputWire + 2} ${outputWire + 3} AND`
-    const gate4 = `2 1 ${isGreaterThan ? i : i + inputSize} ${outputWire + 3} ${outputWire + 4} XOR`
-    outputWire += 4
-    gates.push(gate1, gate2, gate3, gate4)
-  }
-
-  if (type === CompareFlag.LTE || type === CompareFlag.GTE) {
-    gates.push(`1 1 ${outputWire} ${outputWire + 1} INV`)
-    outputWire += 1
-  }
-
-  const totalGate = gates.length
-  const totalWires = outputWire + 1
-  const inputLine = `1 ${inputSize * 2}`
-  const outputLine = `1 ${1}`
-
-  return `${totalGate} ${totalWires}\n${inputLine}\n${outputLine}\n${gates.join("\n")}`
-}
-
-const genEqualCircuit = (inputSize: number, type: CompareFlag) => {
+function equalCircuit(bits: number, negate: boolean): string {
   const gates: string[] = []
-  const outputWires = []
-  let outputWire = inputSize * 2
-  for (let i = 0; i < inputSize; i++) {
-    gates.push(`2 1 ${i} ${i + inputSize} ${outputWire} XOR`)
-    outputWires.push(outputWire)
-    outputWire += 1
+  const diffs: number[] = []
+  let wire = 2 * bits
+  for (let i = 0; i < bits; i++) {
+    gates.push(`2 1 ${i} ${i + bits} ${wire} XOR`)
+    diffs.push(wire++)
   }
-
-  for (let i = 0; i < inputSize; i++) {
-    gates.push(`1 1 ${outputWires[i]} ${outputWire} INV`)
-    outputWires.push(outputWire)
-    outputWire += 1
+  const same: number[] = []
+  for (const diff of diffs) {
+    gates.push(`1 1 ${diff} ${wire} INV`)
+    same.push(wire++)
   }
-
-  outputWires.splice(0, inputSize)
-
-  while (outputWires.length > 1) {
-    const wires = outputWires.splice(0, 2)
-    gates.push(`2 1 ${wires[0]} ${wires[1]} ${outputWire} AND`)
-    outputWires.splice(1, 0, outputWire)
-    outputWire += 1
+  while (same.length > 1) {
+    const [x, y] = same.splice(0, 2)
+    gates.push(`2 1 ${x} ${y} ${wire} AND`)
+    same.splice(1, 0, wire++)
   }
-
-  if (type === CompareFlag.NEQ) {
-    gates.push(`1 1 ${outputWire - 1} ${outputWire} INV`)
-    outputWire += 1
+  if (negate) {
+    gates.push(`1 1 ${wire - 1} ${wire} INV`)
+    wire += 1
   }
+  return circuit(gates, wire, 2 * bits, 1)
+}
 
-  const totalGate = gates.length
-  const totalWires = outputWire
-  const inputLine = `1 ${inputSize * 2}`
-  const outputLine = `1 ${1}`
-  return `${totalGate} ${totalWires}\n${inputLine}\n${outputLine}\n${gates.join("\n")}`
+/** Bitwise XOR of two `bits`-wide inputs. */
+export function xorCircuit(bits: number): string {
+  const gates: string[] = []
+  for (let i = 0; i < bits; i++) gates.push(`2 1 ${i} ${i + bits} ${2 * bits + i} XOR`)
+  return circuit(gates, 3 * bits, 2 * bits, bits)
+}
+
+/** AND of `inputs` bits into one. */
+export function andCircuit(inputs: number): string {
+  const gates: string[] = []
+  const pending = Array.from({ length: inputs }, (_, i) => i)
+  let wire = inputs
+  while (pending.length > 1) {
+    const [x, y] = pending.splice(0, 2)
+    gates.push(`2 1 ${x} ${y} ${wire} AND`)
+    pending.splice(1, 0, wire++)
+  }
+  return circuit(gates, wire, inputs, 1)
+}
+
+/** A constant: one witness bit in, `0 = w ⊕ w`, `1 = ¬0`, one INV per output bit. Wire `i` of
+ *  the output is bit `i` of `bytes` as a big-endian integer. */
+export function constantCircuit(bytes: Uint8Array): string {
+  const bits = wires(bytes)
+  const gates = ["2 1 0 0 1 XOR", "1 1 1 2 INV", ...bits.map((bit, i) => `1 1 ${bit ? 1 : 2} ${i + 3} INV`)]
+  return circuit(gates, bits.length + 3, 1, bits.length)
+}
+
+// The AES one-way function of a value, proven by two `AES256` nodes:
+//   K = value ‖ 0x00 × (31 − L) ‖ L      (32 bytes, L = the value's byte length, 1 ≤ L ≤ 31)
+//   N = AES-256_K(P0) ‖ AES-256_K(P1)    (P0 = 0, P1 = 1 as 16-byte big-endian integers)
+// A constant node holds `P1 ‖ P0 ‖ PAD`; each AES node's key is the padding from the constant on
+// its low wires and the value from the witness above, its block is P0 or P1. The production
+// statement uses this construction, and the node name must match it.
+
+/** The name of the constant node; a verifier recognises the subgraph by it. */
+export const OWF_CONSTANT = "owf_constant"
+export const OWF_NODE = "AES256"
+
+const KEY_BYTES = 32
+const BLOCK_BYTES = 16
+
+/** The AES-256 key of `value`: the value, zero padding, then its length as one byte. */
+export function owfKey(value: Uint8Array): Uint8Array {
+  if (value.length < 1 || value.length >= KEY_BYTES) {
+    throw new Error(`a one-way function value takes 1 to ${KEY_BYTES - 1} bytes, got ${value.length}`)
+  }
+  const key = new Uint8Array(KEY_BYTES)
+  key.set(value)
+  key[KEY_BYTES - 1] = value.length
+  return key
+}
+
+/** The block P₀ or P₁: `i` (0 or 1) in the last of 16 bytes. */
+export function owfBlock(i: number): Uint8Array {
+  const block = new Uint8Array(BLOCK_BYTES)
+  block[BLOCK_BYTES - 1] = i
+  return block
+}
+
+/** What the constant node holds: `P1 ‖ P0 ‖ PAD`, so that in wire order the padding sits lowest,
+ *  then P0, then P1. */
+export function owfConstant(value: Uint8Array): Uint8Array {
+  const pad = owfKey(value).subarray(value.length)
+  const bytes = new Uint8Array(2 * BLOCK_BYTES + pad.length)
+  bytes.set(owfBlock(1), 0)
+  bytes.set(owfBlock(0), BLOCK_BYTES)
+  bytes.set(pad, 2 * BLOCK_BYTES)
+  return bytes
+}
+
+/** The dependencies of the two `AES256` nodes, in node order: the key is the constant's padding
+ *  on the low wires and the value's witness wires above it (`valueWires` in ascending wire order),
+ *  the block is P0 for the first node and P1 for the second. */
+export function owfNodes(constantId: number, value: Uint8Array, valueWires: { start: number; end: number }[]): Dependency[][] {
+  const padWires = 8 * (KEY_BYTES - value.length)
+  const key: Dependency[] = [{ source: constantId, inputStart: 0, sourceStart: 0, size: padWires }]
+  let wire = padWires
+  for (const { start, end } of valueWires) {
+    key.push({ source: WITNESS, inputStart: wire, sourceStart: start, size: end - start })
+    wire += end - start
+  }
+  if (wire !== 8 * KEY_BYTES) {
+    throw new Error(`the value's witness ranges cover ${wire - padWires} bits, expected ${8 * value.length}`)
+  }
+  return [padWires, padWires + 8 * BLOCK_BYTES].map((blockWire) => [
+    ...key,
+    { source: constantId, inputStart: 8 * KEY_BYTES, sourceStart: blockWire, size: 8 * BLOCK_BYTES },
+  ])
 }
