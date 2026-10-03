@@ -6,6 +6,8 @@ WebAssembly module and the statements are built in TypeScript. Timings and proof
 measured as a card runs; the reference table starts from recorded values and switches to the
 values measured here.
 
+https://github.com/user-attachments/assets/1c96e4b7-d947-4fb7-8e94-54fb0e6cee37
+
 Four statements, each with its own card:
 
 | card                  | statement                                                                                 | what the verifier learns                                                 |
